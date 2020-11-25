@@ -1,87 +1,63 @@
 import java.io.*;
 import java.net.*;
+import javax.imageio.*;
+import java.awt.image.*;
 import java.sql.Timestamp;
 import java.util.Date;
 
-public class ServerConnection extends Thread
-{
-	String user = "";
+public class ServerConnection extends Thread{
 
-
-
+	String scName;
+    
 	Socket socket;
-	Server server;
+    Server server;
+	
+	ObjectOutputStream oos;
+	ObjectInputStream ois;
 	DataInputStream din;
 	DataOutputStream dout;
-	boolean shouldRun = true;
 	
-	public ServerConnection(Socket socket, Server server){
-		super("ServerConnectionThread");
-		this.socket = socket;
-		this.server = server;
-	}
+	int shouldRun = 1;
+	String log;
 	
-	public void sendStringToClient(String text, String name){
+    public ServerConnection(Socket socket, Server server){
+        this.socket = socket;
+        this.server = server;
+    }
+	
+	//send message back to client
+    public void sendStringToClient(String text){
+		
 		try{
-
-
 			dout.writeUTF(text);
-			dout.flush();
+			dout.flush();		
+		}catch(IOException e){
+			e.printStackTrace();				
 		}
-		catch(IOException e){
-
-			SendStringToAllClients( "Partner has disconnected", this.user);
-
-			System.out.println("User has disconnected");
-
-			System.out.println(server.userA.user.equals(name));
-
-			if( server.userA.user.equals(name) )
-				server.userB = null;
-
-
-
-
-			if( server.userB.user.equals(name))
-				server.userA = null;
-
-
-		}
-	}
+       
+    }
 	
-	public void SendStringToAllClients(String text, String name){
-
-			ServerConnection sc = server.userA;
-			
-
-		    sc = server.userB;
-
-			if( ! server.userB.user.equals(name))
-			{
-
-				if(text.equals("quit"))
-				{
-					System.out.println(text);
-					if(sc != null)
-						sc.sendStringToClient("has disconnected",name);
-					server.userB = null;
-				}
-				else
-					sc.sendStringToClient(user + ": " + text,name);
-			}
-
-
-
-	}
-
-
-	
-	public void run(){
+	public void sendFileToClient(Textinfo data){
+		
 		try{
-			din = new DataInputStream(socket.getInputStream());
-			dout = new DataOutputStream(socket.getOutputStream());
+			oos = new ObjectOutputStream(socket.getOutputStream());
+			oos.writeObject(data);
+			oos.flush();		
+		}catch(IOException e){
+			e.printStackTrace();				
+		}
+       
+    }
+	
+	@Override
+    public void run(){
+
+        try {
+            din = new DataInputStream(socket.getInputStream());
+            dout = new DataOutputStream(socket.getOutputStream());
 			
-			while(shouldRun){
+            while (shouldRun == 1){
+				
 				while(din.available() == 0){
 					try{
 						Thread.sleep(1);
@@ -90,22 +66,58 @@ public class ServerConnection extends Thread
 						e.printStackTrace();
 					}
 				}
+				
 				Date date= new Date();
 				long time = date.getTime();
 				Timestamp ts = new Timestamp(time);
-
-
-				String textIn = din.readUTF();
-				System.out.println(ts+": Client has sent a message");
-				SendStringToAllClients(textIn,user);
+				
+				String text = din.readUTF();
+				
+				if(text.equals("?41a420")){
+					
+					server.disconnectSocket(scName);
+					shouldRun = 0;
+					
+				}else{
+					if(text.equals("-Rt#eY<H")){ /* File Message */
+						
+						if(server.scArr.size()==1){
+							sendStringToClient("You do not have anyone to send to");
+							String user = din.readUTF();
+							ois = new ObjectInputStream(socket.getInputStream());
+							Textinfo data = (Textinfo) ois.readObject();
+						}else{
+							server.sendStringToAllClients("-Rt#eY<H");
+							
+							String user = din.readUTF();
+							ois = new ObjectInputStream(socket.getInputStream());
+							Textinfo data = (Textinfo) ois.readObject();
+							
+							server.sendFileToAll(data, user);
+							log = ts+": "+user+" has sent a file";
+							System.out.println(log);
+							server.activityLog.add(log);
+							server.sendStringToAllClients(user + " has sent a file");
+						}		
+					}else{
+						String user = text.substring(0, text.indexOf(':'));
+						server.sendStringToAllClients(text);
+						log = ts+": "+user+" has sent a message";
+						System.out.println(log);
+						server.activityLog.add(log);
+					}
+				}
 			}
-			din.close();
 			dout.close();
+			din.close();
 			socket.close();
+						
+		}catch(IOException ex) {
+			ex.printStackTrace();
+        }catch(ClassNotFoundException c){
+			c.printStackTrace();
 		}
-		catch(IOException e){
-			e.printStackTrace();
-		}
-	}
-	
+
+    }
+
 }
